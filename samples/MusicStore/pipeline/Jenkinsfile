@@ -1,0 +1,75 @@
+#!groovy
+node() {
+
+   stage ('Build and Deploy To Dev') {
+     sh "oc start-build musicstore --wait=true --follow -n dnet-dev"
+   }
+
+   stage ('Unit Test & Static Analysis') {
+        parallel(
+           "phaseUnitTest": {
+               //sh "${mvnCmd} test"
+               echo "Remember that unit tests should be  done as the part of builds :)"
+               sleep 2
+           },
+		   "phaseStaticAnalysis": {
+               //sh "${mvnCmd} sonar:sonar -Dsonar.host.url=http://sonarqube-serhat-hw-sonar.apps.c239.openshift.opentlc.com -DskipTests=true"
+               echo "Static tests on Sonar"
+               sleep 2
+           }
+        )
+   }
+
+
+   stage ('Deploy Test') {
+     echo 'Promoting dev to test ...'
+     openshiftTag(sourceStream: 'musicstore', sourceTag: 'latest', namespace: 'dnet-dev', destinationStream: 'musicstore', destinationTag: "test", destinationNamespace: 'dnet-dev')
+     echo 'Deploying ...'
+     sleep 15
+     openshiftVerifyDeployment(deploymentConfig: "musicstore", replicaCount: 1, verifyReplicaCount: true, namespace: 'dnet-test')
+   }
+
+   stage ('Execute Integration Tests') {
+     sleep 2
+   }
+
+   def tag="blue"
+   def altTag="green"
+
+   stage ('Deploy PROD') {
+    echo "Deploying to prod..."
+    //Find the active service
+    sh "oc get route musicstore -n dnet-prod -o jsonpath='{ .spec.to.name }' > activeservice"
+    activeService = readFile('activeservice').trim()
+    echo "Active Service : ${activeService}"
+    if (activeService == "musicstore-blue") {
+        tag = "green"
+        altTag = "blue"
+    }
+    echo "Deploying  musicstore-${tag}"
+    openshiftTag(sourceStream: 'musicstore', sourceTag: 'latest', namespace: 'dnet-dev', destinationStream: 'musicstore', destinationTag: "prod-${tag}", destinationNamespace: 'dnet-dev')
+    sleep 25
+    echo "Verifying the deployment..."
+    openshiftVerifyDeployment(deploymentConfig: "musicstore-${tag}", replicaCount: 1, verifyReplicaCount: true, namespace: 'dnet-prod')
+
+   }
+
+    stage ('Smoke Tests in PROD (Not Live)! This is your part to play!!'){
+
+    }
+
+
+   stage ('Approve to go Live (You have 30 minutes to complete this step) ??') {
+
+     timeout(time:30, unit:'MINUTES') {
+        input message:'Go Live in Production (switch to new version ${tag} )?' , ok: "Promote ${tag}"
+     }
+
+     sh "oc set route-backends musicstore musicstore-${tag}=100 musicstore-${altTag}=0 -n  dnet-prod"
+     sh "oc label svc musicstore-${altTag} state=idle --overwrite -n dnet-prod"
+     sh "oc label svc musicstore-${tag} state=active --overwrite -n dnet-prod"
+     echo "Now the prod deployment switched to the ${tag} version"
+   }
+
+
+}
