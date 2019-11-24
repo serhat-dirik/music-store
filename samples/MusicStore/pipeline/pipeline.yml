@@ -1,0 +1,59 @@
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  creationTimestamp: null
+  labels:
+    name: bluegreen-pipeline
+  name: bluegreen-pipeline
+  selfLink: /apis/build.openshift.io/v1/namespaces/demo-net/buildconfigs/bluegreen-pipeline
+spec:
+  failedBuildsHistoryLimit: 5
+  nodeSelector: {}
+  output: {}
+  postCommit: {}
+  resources: {}
+  runPolicy: SerialLatestOnly
+  source:
+    type: None
+  strategy:
+    jenkinsPipelineStrategy:
+      jenkinsfile: "#!groovy\nnode() {\n\n   stage ('Build and Deploy To Dev') {\n
+        \    sh \"oc start-build musicstore --wait=true --follow -n demo-net\"\n   }\n\n
+        \  stage ('Unit Test & Static Analysis') {\n        parallel(\n           \"phaseUnitTest\":
+        {\n               //sh \"${mvnCmd} test\"\n               echo \"Remember
+        that unit tests should be  done as the part of builds :)\"\n               sleep
+        2\n           },\n\t\t   \"phaseStaticAnalysis\": {\n               //sh \"${mvnCmd}
+        sonar:sonar -Dsonar.host.url=http://sonarqube-serhat-hw-sonar.apps.c239.openshift.opentlc.com
+        -DskipTests=true\"\n               echo \"Static tests on Sonar\"\n               sleep
+        2\n           }\n        )\n   }\n\n\n   stage ('Deploy Test') {\n     echo
+        'Promoting dev to test ...'\n     openshiftTag(sourceStream: 'musicstore',
+        sourceTag: 'latest', namespace: 'demo-net', destinationStream: 'musicstore',
+        destinationTag: \"test\", destinationNamespace: 'demo-net')\n     echo 'Deploying
+        ...'\n     sleep 15\n     openshiftVerifyDeployment(deploymentConfig: \"musicstore-test\",
+        replicaCount: 1, verifyReplicaCount: true, namespace: 'demo-net')\n   }\n\n
+        \  stage ('Execute Integration Tests') {\n     sleep 2\n   }\n\n   def tag=\"blue\"\n
+        \  def altTag=\"green\"\n\n   stage ('Deploy PROD') {\n    echo \"Deploying
+        to prod...\"\n    //Find the active service\n    sh \"oc get route musicstore-prod
+        -n demo-net -o jsonpath='{ .spec.to.name }' > activeservice\"\n    activeService
+        = readFile('activeservice').trim()\n    echo \"Active Service : ${activeService}\"\n
+        \   if (activeService == \"musicstore-prod-blue\") {\n        tag = \"green\"\n
+        \       altTag = \"blue\"\n    }\n    echo \"Deploying  musicstore-prod-${tag}\"\n
+        \   openshiftTag(sourceStream: 'musicstore', sourceTag: 'latest', namespace:
+        'demo-net', destinationStream: 'musicstore', destinationTag: \"prod-${tag}\",
+        destinationNamespace: 'demo-net')\n    sleep 25\n    echo \"Verifying the
+        deployment...\"\n    openshiftVerifyDeployment(deploymentConfig: \"musicstore-prod-${tag}\",
+        replicaCount: 1, verifyReplicaCount: true, namespace: 'demo-net')\n\n   }\n\n
+        \   stage ('Smoke Tests in PROD (Not Live)! This is your part to play!!'){\n\n
+        \   }\n\n\n   stage ('Approve to go Live (You have 30 minutes to complete
+        this step) ??') {\n\n     timeout(time:30, unit:'MINUTES') {\n        input
+        message:'Go Live in Production (switch to new version ${tag} )?' , ok: \"Promote
+        ${tag}\"\n     }\n\n     sh \"oc set route-backends musicstore-prod musicstore-${tag}=100
+        musicstore-${altTag}=0 -n  demo-net\"\n     sh \"oc label svc musicstore-prod-${altTag}
+        state=idle --overwrite -n demo-net\"\n     sh \"oc label svc musicstore-prod-${tag}
+        state=active --overwrite -n demo-net\"\n     echo \"Now the prod deployment
+        switched to the ${tag} version\"\n   }\n\n\n}"
+    type: JenkinsPipeline
+  successfulBuildsHistoryLimit: 5
+  triggers: []
+status:
+  lastVersion: 2

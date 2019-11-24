@@ -2,7 +2,7 @@
 node() {
 
    stage ('Build and Deploy To Dev') {
-     sh "oc start-build musicstore --wait=true --follow -n dnet-dev"
+     sh "oc start-build musicstore --wait=true --follow -n demo-net"
    }
 
    stage ('Unit Test & Static Analysis') {
@@ -23,7 +23,7 @@ node() {
 
    stage ('Deploy Test') {
      echo 'Promoting dev to test ...'
-     openshiftTag(sourceStream: 'musicstore', sourceTag: 'latest', namespace: 'dnet-dev', destinationStream: 'musicstore', destinationTag: "test", destinationNamespace: 'dnet-dev')
+     openshiftTag(sourceStream: 'musicstore', sourceTag: 'latest', namespace: 'demo-net', destinationStream: 'musicstore', destinationTag: "test", destinationNamespace: 'demo-net')
      echo 'Deploying ...'
      sleep 15
      openshiftVerifyDeployment(deploymentConfig: "musicstore", replicaCount: 1, verifyReplicaCount: true, namespace: 'dnet-test')
@@ -47,7 +47,7 @@ node() {
         altTag = "blue"
     }
     echo "Deploying  musicstore-${tag}"
-    openshiftTag(sourceStream: 'musicstore', sourceTag: 'latest', namespace: 'dnet-dev', destinationStream: 'musicstore', destinationTag: "prod-${tag}", destinationNamespace: 'dnet-dev')
+    openshiftTag(sourceStream: 'musicstore', sourceTag: 'latest', namespace: 'demo-net', destinationStream: 'musicstore', destinationTag: "prod-${tag}", destinationNamespace: 'demo-net')
     sleep 25
     echo "Verifying the deployment..."
     openshiftVerifyDeployment(deploymentConfig: "musicstore-${tag}", replicaCount: 1, verifyReplicaCount: true, namespace: 'dnet-prod')
